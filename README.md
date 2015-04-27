@@ -3,7 +3,9 @@ Python prototype to map trace events to code via debug info
 
 ## Requirements
 You will need babeltrace with python bindings installed, as well as
-pyelftools.
+the following python packages:
+
+* [pyelftools](https://github.com/eliben/pyelftools)
 
 The processed trace needs to be of userspace domain, with instruction
 pointer context enabled. This context can be enabled with the

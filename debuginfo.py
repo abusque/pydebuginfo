@@ -3,20 +3,19 @@
 import argparse
 import sys
 from babeltrace import TraceCollection
+from collections import namedtuple
 from elftools.elf.elffile import ELFFile
 from elftools.common.py3compat import bytes2str
 
 _DESC = 'Map events from userspace trace to symbols'
 _VERSION = '0.1.0'
 
+SourceLocation = namedtuple('SourceLocation', 'filename, line')
+
 class DebugInfoAnalysis():
     def __init__(self, args):
-        # dict of adress ranges for functions, indexed by name. The
-        # range is given as a tuple (low_pc, high_pc)
-        self.function_ranges = {}
         self._open_trace(args.trace_path)
         self._open_binary(args.binary_path)
-        self._generate_function_mapping()
 
     def _open_trace(self, path):
         traces = TraceCollection()
@@ -46,12 +45,13 @@ class DebugInfoAnalysis():
         for handle in self._handles.values():
             self._traces.remove_trace(handle)
 
-    def _generate_function_mapping(self):
+    def _get_function_name(self, address):
         for compile_unit in self._dwarf_info.iter_CUs():
             for die in compile_unit.iter_DIEs():
                 try:
                     if die.tag == 'DW_TAG_subprogram':
-                        func_name = bytes2str(die.attributes['DW_AT_name'].value)
+                        func_name = bytes2str(
+                            die.attributes['DW_AT_name'].value)
                         low_pc = die.attributes['DW_AT_low_pc'].value
                         high_pc_attr = die.attributes['DW_AT_high_pc']
                         if high_pc_attr.form == 'DW_FORM_addr':
@@ -60,13 +60,50 @@ class DebugInfoAnalysis():
                             # high_pc relative to lowpc
                             high_pc = low_pc + high_pc_attr.value
 
-                        self.function_ranges[func_name] = (low_pc, high_pc)
+                        if low_pc <= address <= high_pc:
+                            return func_name
                 except KeyError:
                     continue
 
+        return None
+
+    def _get_source_location(self, address):
+        for compile_unit in self._dwarf_info.iter_CUs():
+            line_program = self._dwarf_info.line_program_for_CU(compile_unit)
+            prev_state = None
+
+            for entry in line_program.get_entries():
+                cur_state = entry.state
+                if cur_state is None or cur_state.end_sequence:
+                    continue
+
+                if prev_state:
+                    file_entry = line_program['file_entry']
+                    filename = file_entry[prev_state.file - 1].name
+                    filename = bytes2str(filename)
+                    line = prev_state.line
+                    low_pc = prev_state.address
+                    high_pc = cur_state.address
+
+                    if low_pc > high_pc:
+                        low_pc, high_pc = high_pc, low_pc
+
+                    if low_pc <= address <= high_pc:
+                        return SourceLocation(filename, line)
+
+                prev_state = cur_state
+
+        return SourceLocation(None, None)
+
     def run(self):
-        for func in self.function_ranges:
-            print(func, self.function_ranges[func])
+        for event in self._traces.events:
+            address = event['ip']
+            func_name = self._get_function_name(address)
+            source_location = self._get_source_location(address)
+            if func_name is not None:
+                print(func_name)
+            if source_location.filename is not None:
+                print(source_location)
 
         self._close_trace()
 
