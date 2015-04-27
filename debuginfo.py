@@ -16,6 +16,10 @@ class DebugInfoAnalysis():
     def __init__(self, args):
         self._open_trace(args.trace_path)
         self._open_binary(args.binary_path)
+        # Memoized function names and SourceLocations, indexed by
+        # address
+        self._function_names = {}
+        self._source_locations = {}
 
     def _open_trace(self, path):
         traces = TraceCollection()
@@ -45,7 +49,7 @@ class DebugInfoAnalysis():
         for handle in self._handles.values():
             self._traces.remove_trace(handle)
 
-    def _get_function_name(self, address):
+    def _lookup_function_name(self, address):
         for compile_unit in self._dwarf_info.iter_CUs():
             for die in compile_unit.iter_DIEs():
                 try:
@@ -61,13 +65,14 @@ class DebugInfoAnalysis():
                             high_pc = low_pc + high_pc_attr.value
 
                         if low_pc <= address <= high_pc:
-                            return func_name
+                            self._function_names[address] = func_name
+                            return self._function_names[address]
                 except KeyError:
                     continue
 
         return None
 
-    def _get_source_location(self, address):
+    def _lookup_source_location(self, address):
         for compile_unit in self._dwarf_info.iter_CUs():
             line_program = self._dwarf_info.line_program_for_CU(compile_unit)
             prev_state = None
@@ -89,17 +94,32 @@ class DebugInfoAnalysis():
                         low_pc, high_pc = high_pc, low_pc
 
                     if low_pc <= address <= high_pc:
-                        return SourceLocation(filename, line)
+                        self._source_locations[address] = SourceLocation(
+                            filename, line)
+                        return self._source_locations[address]
 
                 prev_state = cur_state
 
         return SourceLocation(None, None)
 
+
+    def get_function_name(self, address):
+        if address in self._function_names:
+            return self._function_names[address]
+        else:
+            return self._lookup_function_name(address)
+
+    def get_source_location(self, address):
+        if address in self._source_locations:
+            return self._source_locations[address]
+        else:
+            return self._lookup_source_location(address)
+
     def run(self):
         for event in self._traces.events:
             address = event['ip']
-            func_name = self._get_function_name(address)
-            source_location = self._get_source_location(address)
+            func_name = self.get_function_name(address)
+            source_location = self.get_source_location(address)
             if func_name is not None:
                 print(func_name)
             if source_location.filename is not None:
