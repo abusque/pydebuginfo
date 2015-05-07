@@ -19,4 +19,4 @@ have source file/function information, extracted from the DWARF info.
 ## Usage
 Once your trace has been recorded, you can perform the analysis as follows:
 
-    $ ./debuginfo /path/to/trace /path/to/binary
+    $ ./debuginfo /path/to/trace
