@@ -13,8 +13,13 @@ following command prior to the start of the trace:
 
     $ lttng add-context -u -t ip
 
-The trace binary also has to be compiled in debug mode if you want to
-have source file/function information, extracted from the DWARF info.
+The traced binary also has to be compiled in debug mode if you want to
+have source file/function information, extracted from the DWARF
+info. It is also necessary to LD_PRELOAD the dynamic linking tracing
+helper, `liblttng-ust-dl.so`, which you can easily do using the `env`
+command, as such:
+
+    $ env LD_PRELOAD="liblttng-ust-dl.so" /path/to/executable
 
 ## Usage
 Once your trace has been recorded, you can perform the analysis as follows:
