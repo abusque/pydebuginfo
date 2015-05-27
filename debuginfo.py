@@ -144,8 +144,11 @@ class DebugInfoAnalysis():
 
     def run(self):
         for event in self._traces.events:
-            if event.name in ['ust_baddr_statedump:soinfo', 'ust_baddr:push']:
+            if event.name in ['lttng_ust_statedump:soinfo', 'lttng_ust_dl:dlopen']:
                 self._handle_baddr_event(event)
+            elif event.name.startswith('lttng_ust'):
+                # TODO handle dlclose and state dump start/end
+                continue
             else:
                 self._print_debug_info(event)
 
